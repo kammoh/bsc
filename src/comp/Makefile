@@ -63,7 +63,7 @@ HTCL_LIB_FLAGS = -lhtcl
 # TCL version
 ifeq ($(OSTYPE), Darwin)
 # Have Makefile avoid Homebrew's install of tcl on Mac
-TCLSH=/usr/bin/tclsh
+TCLSH=/usr/local/bin/tclsh
 else
 TCLSH=tclsh
 endif
@@ -73,10 +73,11 @@ $(error TCL version check failed)
 endif
 
 # TCL include flags
-TCL_INC_FLAGS = $(shell pkg-config --silence-errors --cflags-only-I tcl || echo -I/usr/include/tcl)
+TCL_INC_FLAGS = $(shell PKG_CONFIG_PATH=/Library/Frameworks/Tcl.framework/Versions/8.6/pkgconfig pkg-config --silence-errors --cflags-only-I tcl || echo -I/usr/include/tcl)
 
-# TCL library flags
-TCL_LIB_FLAGS = -ltcl$(TCL_VER)
+# TCL library flag
+TCL_LIB_FLAGS = -optl -F/Library/Frameworks -framework Tcl -L/Library/Frameworks/Tcl.framework/Versions/8.6 -ltclstub8.6
+#TCL_LIB_FLAGS = $(shell PKG_CONFIG_PATH=/Library/Frameworks/Tcl.framework/Versions/8.6/pkgconfig pkg-config --silence-errors --libs tcl || echo -ltcl$(TCL_VER))
 
 # -----
 # GHC
