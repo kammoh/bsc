@@ -5,6 +5,8 @@ include $(TOP)/platform.mk
 
 PREFIX?=$(TOP)/inst
 
+NJOBS?=$(shell nproc)
+
 ifndef NO_DEPS_CHECKS
 CC_TOOLS=$(CC) $(CXX) $(LD)
 BSC_TOOLS=ghc ghc-pkg
@@ -45,17 +47,17 @@ all: install
 
 .PHONY: install clean full_clean
 install clean full_clean:
-	$(MAKE)  -C vendor/stp   PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C vendor/yices PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C vendor/htcl  PREFIX=$(PREFIX)  $@
+	$(MAKE)  -C vendor/stp   PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C vendor/yices PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C vendor/htcl  PREFIX=$(PREFIX) -j$(NJOBS) $@
 	# we need to build targets from here sequentially, as they operate in the same workspace
-	$(MAKE)  -C comp -j1   PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C Libraries  PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C exec       PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C VPI        PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C Verilog    PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C Verilog.Quartus  PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C Verilog.Vivado   PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C bluetcl    PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C bluesim    PREFIX=$(PREFIX)  $@
+	$(MAKE)  -C comp       PREFIX=$(PREFIX) -j1 $@
+	$(MAKE)  -C Libraries  PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C exec       PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C VPI        PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C Verilog    PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C Verilog.Quartus  PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C Verilog.Vivado   PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C bluetcl    PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C bluesim    PREFIX=$(PREFIX) -j$(NJOBS) $@
 

@@ -83,7 +83,7 @@ TCL_LIB_FLAGS = -optl -F/Library/Frameworks -framework Tcl -L/Library/Frameworks
 # GHC
 
 GHC ?= ghc
-GHCJOBS ?= 1
+GHCJOBS ?= $(shell nproc)
 
 GHCVERSION=$(shell $(GHC) --version | head -1 | egrep -o "[0-9]+\.[0-9]+\.[0-9]" )
 

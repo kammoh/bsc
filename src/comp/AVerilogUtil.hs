@@ -478,7 +478,7 @@ vDefMpd vco  def@(ADef i t (APrim _ _ PrimPriMux es) _) _ =
         sensitivityList = nub (concatMap aIds es)
         ev = if (null sensitivityList)
              then (internalError("AVerilogUtil:: null sensitivity list for PrimPriMux" ++ ppReadable def))
-             else foldr1 VEEOr (map (VEE . VEVar) sensitivityList)
+             else VEEStar (foldr1 VEEOr (map (VEE . VEVar) sensitivityList))
 
 vDefMpd vco def@(ADef i t (APrim _ _ PrimMux es) _) _ =
     if (not (vco_readableMux vco)) then
@@ -506,7 +506,7 @@ vDefMpd vco def@(ADef i t (APrim _ _ PrimMux es) _) _ =
         sensitivityList = nub (concatMap aIds es)
         ev = if (null sensitivityList)
              then (internalError("AVerilogUtil:: null sensitivity list for PrimMux"  ++ ppReadable def))
-             else foldr1 VEEOr (map (VEE . VEVar) sensitivityList)
+             else VEEStar (foldr1 VEEOr (map (VEE . VEVar) sensitivityList))
 
 vDefMpd vco (ADef i t
                (ANoInlineFunCall _ _
@@ -560,7 +560,7 @@ vDefMpd vco defin@(ADef i t (APrim _ _ PrimCase es@(x:defarm:ces_t)) _) _ =
         sensitivityList = nub (concatMap aIds es)
         ev = if (null sensitivityList)
              then (internalError("AVerilogUtil:: null sensitivity list for case" ++ ppReadable defin))
-             else foldr1 VEEOr (map (VEE . VEVar) sensitivityList)
+             else VEEStar (foldr1 VEEOr (map (VEE . VEVar) sensitivityList))
         n = aSize x
         fullcase = (2^n * 2) == (length ces_t)
         def = if fullcase then [] else [VDefault (VAssign (VLId vi) (vExpr vco defarm))]

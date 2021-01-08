@@ -1802,6 +1802,7 @@ instance VUse VVDecl where
     vuses (VVDWire _ _ e) = vuses e
 
 instance VUse VEventExpr where
+    vuses (VEEStar e) = vuses e
     vuses (VEEOr e e') = vuses e ++ vuses e'
     vuses (VEEposedge e) = vuses e
     vuses (VEEnegedge e) = vuses e

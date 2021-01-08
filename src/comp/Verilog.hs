@@ -46,7 +46,7 @@ module Verilog(
 import Prelude hiding ((<>))
 #endif
 
-import Data.List(nub)
+import Data.List(nub, intercalate)
 import Data.Maybe(fromMaybe)
 import Eval
 import PPrint
@@ -64,14 +64,17 @@ import qualified Data.Generics as Generic
 
 
 -- string to start synthesis attributes with
-synthesis_str :: String
-synthesis_str = "synopsys"
+-- synthesis_str :: String
+-- synthesis_str = "synopsys"
 -- other possibilities
 --synthesis_str = "synthesis"
 --synthesis_str = "pragma"
 
-mkSynthPragma :: String -> Doc
-mkSynthPragma s = text ("// " ++ synthesis_str ++ " " ++ s)
+-- mkSynthPragma :: String -> Doc
+-- mkSynthPragma s = text ("// " ++ synthesis_str ++ " " ++ s)
+
+mkVerilogAttribute :: [String] -> Doc
+mkVerilogAttribute ls = text ("(* " ++ intercalate ", " ls ++ " *)")
 
 
 -- VProgram
@@ -83,6 +86,15 @@ data VProgram = VProgram [VModule] VComment
 instance Hyper VProgram where
     hyper x y = (x==x) `seq` y
 
+bsvAssignmentDelay :: Bool
+bsvAssignmentDelay = False
+
+bsvPositiveReset :: Maybe Bool
+bsvPositiveReset = Just True
+
+bsvInitialBlocks :: Bool
+bsvInitialBlocks = False
+
 instance PPrint VProgram where
     pPrint d p (VProgram ms cs) =
         ppComment cs $+$
@@ -92,21 +104,28 @@ instance PPrint VProgram where
         text ""
       where -- define BSV_ASSIGNMENT_DELAY when the user does not override it
         assignment_delay_macro =
-          text "" $+$
-          text "`ifdef BSV_ASSIGNMENT_DELAY" $+$
-          text "`else" $+$
-          text "  `define BSV_ASSIGNMENT_DELAY" $+$
-          text "`endif" $+$
-          text ""
+          if bsvAssignmentDelay then
+            text "" $+$
+            text "`ifdef BSV_ASSIGNMENT_DELAY" $+$
+            text "`else" $+$
+            text "  `define BSV_ASSIGNMENT_DELAY" $+$
+            text "`endif" $+$
+            text ""
+          else
+            text ""
         reset_level_macro =
-          text "`ifdef BSV_POSITIVE_RESET" $+$
-          text "  `define BSV_RESET_VALUE 1'b1" $+$
-          text "  `define BSV_RESET_EDGE posedge" $+$
-          text "`else" $+$
-          text "  `define BSV_RESET_VALUE 1'b0" $+$
-          text "  `define BSV_RESET_EDGE negedge" $+$
-          text "`endif" $+$
-          text ""
+          case bsvPositiveReset of
+            Nothing ->
+              text "`ifdef BSV_POSITIVE_RESET" $+$
+              text "  `define BSV_RESET_VALUE 1'b1" $+$
+              text "  `define BSV_RESET_EDGE posedge" $+$
+              text "`else" $+$
+              text "  `define BSV_RESET_VALUE 1'b0" $+$
+              text "  `define BSV_RESET_EDGE negedge" $+$
+              text "`endif" $+$
+              text ""
+            _ ->
+              text ""
 
 -- VComment
 --    * a list of single-line comments (already broken into lines)
@@ -296,9 +315,10 @@ instance Ord VMItem where
 instance PPrint VMItem where
         pPrint d p (VMDecl dcl) = pPrint d p dcl
         pPrint d p s@(VMStmt {})
-                | vi_translate_off s = mkSynthPragma "translate_off" $$
-                                        pPrint d p (vi_body s) $$
-                                        mkSynthPragma "translate_on"
+                | vi_translate_off s = text "" 
+                -- mkSynthPragma "translate_off" $$
+                -- pPrint d p (vi_body s) $$
+                -- mkSynthPragma "translate_on"
                 | otherwise = pPrint d p (vi_body s)
         pPrint d p (VMAssign v e) = -- trace("Assignment :" ++ (ppReadable v) ++ " = " ++ (ppReadable e) ++ "\n") $
             sep [text "assign" <+> pPrint d 45 v <+> text "=",
@@ -319,9 +339,10 @@ instance PPrint VMItem where
                  <> text ";"
         pPrint d p (VMComment cs stmt) = ppComment cs $+$ pPrint d p stmt
         pPrint d p g@(VMGroup _ stmtss)
-                | vg_translate_off g = mkSynthPragma "translate_off" $$
-                                       vsepEmptyLine (map (ppLines d) stmtss) $$
-                                       mkSynthPragma "translate_on"
+                | vg_translate_off g = text ""
+                  -- mkSynthPragma "translate_off" $$
+                  --  vsepEmptyLine (map (ppLines d) stmtss)
+                  --  mkSynthPragma "translate_on"
                 | otherwise = vsepEmptyLine (map (ppLines d) stmtss)
 
         pPrint d p (VMFunction f) = pPrint d p f
@@ -429,19 +450,22 @@ instance PPrint VStmt where
         pPrint d p (Valways (VAt e s)) = sep [text "always@" <> pparen True (pPrint d 0 e), pPrint d 0 s]
         pPrint d p (Valways s) = sep [text "always", pPrint d 0 s]
         pPrint d p (Vinitial s) =
-             text "`ifdef BSV_NO_INITIAL_BLOCKS" $$
-             text "`else // not BSV_NO_INITIAL_BLOCKS" $$
-             sep [text "initial", pPrint d 0 s] $$
-             text "`endif // BSV_NO_INITIAL_BLOCKS"
+            if bsvInitialBlocks then
+              text "`ifdef BSV_NO_INITIAL_BLOCKS" $$
+              text "`else // not BSV_NO_INITIAL_BLOCKS" $$
+              sep [text "initial", pPrint d 0 s] $$
+              text "`endif // BSV_NO_INITIAL_BLOCKS"
+            else
+              text ""
         pPrint d p (VSeq ss) = text "begin" $+$ (text "  " <> ppLines d ss) $+$ text "end"
         pPrint d p s@(Vcasex {}) =
-            (text "casex" <+> pparen True (pPrint d 0 (vs_case_expr s))) <+>
-                pprintCaseAttributes (vs_parallel s) (vs_full s) $+$
+            pprintCaseAttributes (vs_parallel s) (vs_full s) $+$
+                (text "casex" <+> pparen True (pPrint d 0 (vs_case_expr s))) $+$
             (text "  " <> ppLines d (vs_case_arms s)) $+$
             (text "endcase")
         pPrint d p s@(Vcase {}) =
-            (text "case" <+> pparen True (pPrint d 0 (vs_case_expr s))) <+>
-                pprintCaseAttributes (vs_parallel s) (vs_full s) $+$
+            pprintCaseAttributes (vs_parallel s) (vs_full s) $+$
+                (text "case" <+> pparen True (pPrint d 0 (vs_case_expr s))) $+$
             (text "  " <> ppLines d (vs_case_arms s)) $+$
             (text "endcase")
         pPrint d p (VAssign v e) =
@@ -450,7 +474,7 @@ instance PPrint VStmt where
                   nest 4 (pPrint d 0 e <> text ";") ]
         pPrint d p (VAssignA v e) =
             -- if the expr doesn't fit on the same line, indent it 4 spaces
-            sep [ pPrint d 0 v <+> text "<=" <+> text "`BSV_ASSIGNMENT_DELAY",
+            sep [ pPrint d 0 v <+> text "<=" <+> text (if bsvAssignmentDelay then "`BSV_ASSIGNMENT_DELAY" else ""),
                   nest 4 (pPrint d 0 e <> text ";") ]
         pPrint d p (Vif e s) | isOne e = pPrint d p s -- optimize ifs that are always true
         pPrint d p (Vif e s) | isZero e = text "" -- optimize away ifs that are always false
@@ -500,9 +524,9 @@ ppAs1 d i cs xs = text c1 <> ppAs1 d i c2 xs where
 
 pprintCaseAttributes :: Bool -> Bool -> Doc
 pprintCaseAttributes False False = empty
-pprintCaseAttributes True  False = mkSynthPragma "parallel_case"
-pprintCaseAttributes False True  = mkSynthPragma "full_case"
-pprintCaseAttributes True  True  = mkSynthPragma "parallel_case full_case"
+pprintCaseAttributes True  False = mkVerilogAttribute ["parallel_case"]
+pprintCaseAttributes False True  = mkVerilogAttribute ["full_case"]
+pprintCaseAttributes True  True  = mkVerilogAttribute ["parallel_case", "full_case"]
 
 
 -- hack to check if expressions are known to be true or false
@@ -651,6 +675,7 @@ data VEventExpr
         | VEEnegedge VExpr
         | VEE VExpr
         | VEEMacro String VExpr
+        | VEEStar VEventExpr -- wrapping VEEOr, translating to "*" in Verilog generation
         deriving (Eq, Show, Generic.Data, Generic.Typeable)
 
 instance PPrint VEventExpr where
@@ -663,6 +688,7 @@ instance PPrint VEventExpr where
         pPrint d p (VEEnegedge e) = text "negedge" <+> pPrint d 10 e
         pPrint d p (VEE e) = pPrint d p e
         pPrint d p (VEEMacro s e) = text ("`" ++ s) <+> pPrint d (p+1) e
+        pPrint d p (VEEStar _) = text "*"
 
 
 data VExpr
@@ -1005,10 +1031,18 @@ mkNotEqualsReset e = mkVEOp e VNE mkReset
 
 
 mkEdgeReset :: VExpr -> VEventExpr
-mkEdgeReset e = VEEMacro "BSV_RESET_EDGE" e
+mkEdgeReset e = 
+  case bsvPositiveReset of
+    Just True -> VEEposedge e
+    Just False -> VEEnegedge e
+    Nothing -> VEEMacro "BSV_RESET_EDGE" e
 
 mkReset :: VExpr
-mkReset =  VEMacro "BSV_RESET_VALUE"
+mkReset =
+  case bsvPositiveReset of
+    Just True -> VEConst 1
+    Just False -> VEConst 0
+    Nothing -> VEMacro "BSV_RESET_VALUE"
 
 mkNotReset :: VExpr
 mkNotReset = mkVEUnOp VNot mkReset

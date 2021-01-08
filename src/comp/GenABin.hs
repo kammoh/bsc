@@ -815,6 +815,7 @@ instance Bin VStmt where
         n -> internalError $ "GenABin(VStmt).readBytes: " ++ show n
 
 instance Bin VEventExpr where
+    writeBytes (VEEStar e1)   = writeBytes e1
     writeBytes (VEEOr e1 e2)  = do putI 0; toBin e1; toBin e2
     writeBytes (VEEposedge e) = do putI 1; toBin e
     writeBytes (VEEnegedge e) = do putI 2; toBin e
