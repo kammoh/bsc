@@ -1,7 +1,7 @@
 PWD := $(shell pwd)
 TOP := $(PWD)
 
-PREFIX   ?= $(BLUESPEC_PREFIX)
+PREFIX   ?= $(if $(BLUESPEC_PREFIX),$(BLUESPEC_PREFIX),$(TOP)/inst)
 BUILDDIR ?= $(TOP)/build
 
 .PHONY: all
