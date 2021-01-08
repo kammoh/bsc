@@ -74,8 +74,8 @@ import qualified Data.Generics as Generic
 -- mkSynthPragma s = text ("// " ++ synthesis_str ++ " " ++ s)
 
 mkSimGuard :: Bool -> Doc
-mkSimGuard True = text "`ifdef SIMULATION"
-mkSimGuard False = text "`endif // SIMULATION"
+mkSimGuard True = text "`ifndef SYNTHESIS"
+mkSimGuard False = text "`endif // NOT SYNTHESIS"
 
 mkVerilogAttribute :: [String] -> Doc
 mkVerilogAttribute ls = text ("(* " ++ intercalate ", " ls ++ " *)")
