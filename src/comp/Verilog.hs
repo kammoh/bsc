@@ -73,6 +73,10 @@ import qualified Data.Generics as Generic
 -- mkSynthPragma :: String -> Doc
 -- mkSynthPragma s = text ("// " ++ synthesis_str ++ " " ++ s)
 
+mkSimGuard :: Bool -> Doc
+mkSimGuard True = text "`ifdef SIMULATION"
+mkSimGuard False = text "`endif // SIMULATION"
+
 mkVerilogAttribute :: [String] -> Doc
 mkVerilogAttribute ls = text ("(* " ++ intercalate ", " ls ++ " *)")
 
@@ -315,10 +319,9 @@ instance Ord VMItem where
 instance PPrint VMItem where
         pPrint d p (VMDecl dcl) = pPrint d p dcl
         pPrint d p s@(VMStmt {})
-                | vi_translate_off s = text "" 
-                -- mkSynthPragma "translate_off" $$
-                -- pPrint d p (vi_body s) $$
-                -- mkSynthPragma "translate_on"
+                | vi_translate_off s = mkSimGuard True $$
+                    pPrint d p (vi_body s) $$
+                    mkSimGuard False
                 | otherwise = pPrint d p (vi_body s)
         pPrint d p (VMAssign v e) = -- trace("Assignment :" ++ (ppReadable v) ++ " = " ++ (ppReadable e) ++ "\n") $
             sep [text "assign" <+> pPrint d 45 v <+> text "=",
@@ -339,10 +342,9 @@ instance PPrint VMItem where
                  <> text ";"
         pPrint d p (VMComment cs stmt) = ppComment cs $+$ pPrint d p stmt
         pPrint d p g@(VMGroup _ stmtss)
-                | vg_translate_off g = text ""
-                  -- mkSynthPragma "translate_off" $$
-                  --  vsepEmptyLine (map (ppLines d) stmtss)
-                  --  mkSynthPragma "translate_on"
+                | vg_translate_off g = mkSimGuard True $$
+                    vsepEmptyLine (map (ppLines d) stmtss) $$
+                    mkSimGuard False
                 | otherwise = vsepEmptyLine (map (ppLines d) stmtss)
 
         pPrint d p (VMFunction f) = pPrint d p f

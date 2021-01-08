@@ -35,7 +35,7 @@ check:
 
 # -------------------------
 
-clean: rem_inst rem_build
+clean: rem_build
 	-$(MAKE)  -C src  clean
 
 full_clean: rem_inst rem_build

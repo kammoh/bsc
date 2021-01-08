@@ -46,7 +46,8 @@ endif # NO_DEPS_CHECKS
 all: install
 
 .PHONY: install clean full_clean
-install clean full_clean:
+
+clean full_clean:
 	$(MAKE)  -C vendor/stp   PREFIX=$(PREFIX) -j$(NJOBS) $@
 	$(MAKE)  -C vendor/yices PREFIX=$(PREFIX) -j$(NJOBS) $@
 	$(MAKE)  -C vendor/htcl  PREFIX=$(PREFIX) -j$(NJOBS) $@
@@ -61,3 +62,18 @@ install clean full_clean:
 	$(MAKE)  -C bluetcl    PREFIX=$(PREFIX) -j$(NJOBS) $@
 	$(MAKE)  -C bluesim    PREFIX=$(PREFIX) -j$(NJOBS) $@
 
+
+install:
+	$(MAKE)  -C vendor/stp   PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C vendor/yices PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C vendor/htcl  PREFIX=$(PREFIX) -j$(NJOBS) $@
+	# we need to build targets from here sequentially, as they operate in the same workspace
+	$(MAKE)  -C comp       PREFIX=$(PREFIX) -j1 install install-extra
+	$(MAKE)  -C Libraries  PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C exec       PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C VPI        PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C Verilog    PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C Verilog.Quartus  PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C Verilog.Vivado   PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C bluetcl    PREFIX=$(PREFIX) -j$(NJOBS) $@
+	$(MAKE)  -C bluesim    PREFIX=$(PREFIX) -j$(NJOBS) $@
