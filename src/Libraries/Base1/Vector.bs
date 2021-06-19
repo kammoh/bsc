@@ -88,21 +88,21 @@ instance (FShow a) => FShow (Vector n a)
             elements = Vector.foldr insertSpace (fshow "") fmts
         in  $format "<V " elements " >"
 
-instance (PrimMakeUndefined a) => PrimMakeUndefined (Vector n a)
-  where
-    primMakeUndefined pos kind = replicate (primMakeUndefined pos kind)
-
 -- This is used to construct an array with uninitialized elements
 -- and still mark the array as uninitialized until the user updates
 -- it with real values (since the update to insert the uninit elems
 -- will cause the array to be marked as initialized).
 --
 primitive primMarkArrayUninitialized
-	      :: Position__ -> String -> Array a -> Array a
+              :: Position__ -> String -> Array a -> Array a
 
 markVectorUninitialized :: Position__ -> String -> Vector n a -> Vector n a
 markVectorUninitialized pos name (V v) = V (primMarkArrayUninitialized pos name v)
 
+-- We can't use the generic instance here because in addition to its elements
+-- being uninitialized, we want to mark the entire vector as uninitialized by
+-- calling markVectorUninitialized that calls primMarkArrayUninitialized
+-- on the underlying array.
 instance (PrimMakeUninitialized a) => PrimMakeUninitialized (Vector n a)
   where
     primMakeUninitialized pos name =
@@ -192,8 +192,8 @@ genWith f = V (Array.genWith (valueOf n) f)
 --@ \end{libverbatim}
 cons :: (Add 1 n n1) => a -> Vector n a -> Vector n1 a
 cons x (V v) = if (valueOf n) == 0
-        	 then V (primArrayNew 1 x)
-		 else V (primUpdateFn (getStringPosition "") (growRight v 1) 0 x)
+                 then V (primArrayNew 1 x)
+                 else V (primUpdateFn (getStringPosition "") (growRight v 1) 0 x)
 
 --X@ A more convenient (right associative) operator for Cons (not available in BSV).
 --X@ \begin{libverbatim}
@@ -331,7 +331,7 @@ init (V v) = V (Array.shrinkLeft v 1)
 take :: (Add m k n) => Vector n a -> Vector m a
 take (V v) = if (valueOf m) == 0
                 then V (primArrayNewU 0)
-		else V (Array.shrinkLeft v (valueOf k))
+                else V (Array.shrinkLeft v (valueOf k))
 
 --@ \index{takeTail@\te{takeTail} (\te{Vector} function)}
 --@ Take a number of elements of the vector dropping elements at the
@@ -711,9 +711,9 @@ rotateStage (V v) stg amt =
     in if (ctrl == 0)
        then V v
        else let move = 2**stg
-		keep = (valueOf n) - move
-		high = Array.shrinkLeft v move
-		low  = Array.shrinkRight v keep
+                keep = (valueOf n) - move
+                high = Array.shrinkLeft v move
+                low  = Array.shrinkRight v keep
             in V (Array.append high low )
 
 rotateLoop :: (Log n lgn) => Vector n a -> Integer -> UInt lgn -> Vector n a
@@ -1050,8 +1050,8 @@ and v = all id v
 find :: (a -> Bool) -> Vector n a -> Maybe a
 find pred v =
     let combine :: Maybe a -> a -> Maybe a
-	combine Nothing y = if (pred y) then (Just y) else Nothing
-	combine x       _ = x
+        combine Nothing y = if (pred y) then (Just y) else Nothing
+        combine x       _ = x
     in if (valueOf n) == 0
        then Nothing
        else foldl combine Nothing v
@@ -1068,9 +1068,9 @@ findIndex pred v =
         genRes True i = Valid i
         genRes False _ = Invalid
         results = zipWith genRes  (map pred v) (genWith fromInteger )
-	combine :: Maybe (UInt lgn) -> Maybe (UInt lgn) -> Maybe (UInt lgn)
-	combine Nothing x = x
-	combine x       _ = x
+        combine :: Maybe (UInt lgn) -> Maybe (UInt lgn) -> Maybe (UInt lgn)
+        combine Nothing x = x
+        combine x       _ = x
     in if (valueOf n) == 0
        then Nothing
        else Array.fold combine (vectorToArray results)
@@ -1251,8 +1251,8 @@ writeVReg vr v = joinActions $ zipWith writeReg vr v
 toChunks :: (Bits ch ch_sz, Bits t in_sz, Div in_sz ch_sz n) => t -> Vector n ch
 toChunks x = let padding = (0 :: Bit ch_sz)
                  v_sz = (valueOf ch_sz) * (valueOf n)
-	         tmp = padding ++ (pack x)
-	     in unpack(tmp[v_sz-1:0])
+                 tmp = padding ++ (pack x)
+             in unpack(tmp[v_sz-1:0])
 
 
 --@ \item{\bf Examples Using the Vector Type}
@@ -1345,3 +1345,20 @@ instance FShow (Ascii n)
 instance (DefaultValue t) => DefaultValue (Vector n t)
   where
     defaultValue = replicate defaultValue
+
+-- The generic representation of a vector is a vector of generic representations
+instance Generic (Vector n a) (Meta (MetaData "Vector" "Vector" (NumArg n, StarArg a) 1) (Vector n (Conc a))) where
+  from v = Meta $ map Conc v
+  to (Meta v) = map (\ Conc x -> x) v
+
+-- Generic implementations of primitive type classes for types with vector generic representations
+instance (PrimMakeUndefined'' r) => PrimMakeUndefined'' (Vector n r) where
+  primMakeUndefined'' pos kind = replicate (primMakeUndefined'' pos kind)
+
+instance (PrimMakeUninitialized'' r) => PrimMakeUninitialized'' (Vector n r) where
+  primMakeUninitialized'' _ pos name =
+    let f i = primMakeUninitialized'' _ pos (name + "[" + integerToString(i) + "]")
+    in genWith f
+
+instance (PrimDeepSeqCond' r) => PrimDeepSeqCond' (Vector n r) where
+  primDeepSeqCond' = flip $ foldr primDeepSeqCond'

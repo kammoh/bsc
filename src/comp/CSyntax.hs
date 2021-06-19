@@ -186,7 +186,11 @@ data CExpr
         | CSelect CExpr Id                        -- expr, field id
         | CCon Id [CExpr]                        -- constructor id, arguments
         | Ccase Position CExpr CCaseArms
-        | CStruct Id [(Id, CExpr)]
+        -- Either a struct type or a constructor with named fields.
+        -- The 'Maybe Bool' argument can indicate if it is specifically
+        -- one or the other (True for struct), otherwise the typechecker
+        -- will attempt to determine which is intended.
+        | CStruct (Maybe Bool) Id [(Id, CExpr)]
         | CStructUpd CExpr [(Id, CExpr)]
 
         -- for hardware writes
@@ -274,8 +278,8 @@ instance Eq CExpr where
         = (i1 == i2) && (es1 == es2)
     (==) (Ccase _ e1 as1) (Ccase _ e2 as2)
         = (e1 == e2) && (as1 == as2)
-    (==) (CStruct i1 fs1) (CStruct i2 fs2)
-        = (i1 == i2) && (fs1 == fs2)
+    (==) (CStruct mb1 i1 fs1) (CStruct mb2 i2 fs2)
+        = (mb1 == mb2) && (i1 == i2) && (fs1 == fs2)
     (==) (CStructUpd e1 fs1) (CStructUpd e2 fs2)
         = (e1 == e2) && (fs1 == fs2)
     (==) (Cwrite _ x1 y1) (Cwrite _ x2 y2)
@@ -520,6 +524,7 @@ type COSummands = [COriginalSummand]
 data COriginalSummand =
     COriginalSummand { cos_names :: [Id],
                        cos_arg_types :: [CQType],
+                       cos_field_names :: Maybe [Id],
                        cos_tag_encoding :: Maybe Integer }
     deriving (Eq, Ord, Show)
 
@@ -613,7 +618,11 @@ isCQFilter _            = False
 
 data CPat
         = CPCon Id [CPat]
-        | CPstruct Id [(Id, CPat)]
+        -- Either a struct type or a constructor with named fields.
+        -- The 'Maybe Bool' argument can indicate if it is specifically
+        -- one or the other (True for struct), otherwise the typechecker
+        -- will attempt to determine which is intended.
+        | CPstruct (Maybe Bool) Id [(Id, CPat)]
         | CPVar Id
         | CPAs Id CPat
         | CPAny Position
@@ -750,7 +759,7 @@ instance HasPosition IdK where
 
 instance HasPosition CPat where
     getPosition (CPCon c _) = getPosition c
-    getPosition (CPstruct c _) = getPosition c
+    getPosition (CPstruct _ c _) = getPosition c
     getPosition (CPVar i) = getPosition i
     getPosition (CPAs i _) = getPosition i
     getPosition (CPAny p) = p
@@ -780,7 +789,7 @@ instance HasPosition CExpr where
     getPosition (CSelectTT _ e _) = getPosition e
     getPosition (CCon c _) = getPosition c
     getPosition (Ccase pos _ _) = pos
-    getPosition (CStruct i _) = getPosition i
+    getPosition (CStruct _ i _) = getPosition i
     getPosition (CStructUpd e _) = getPosition e
     getPosition (Cwrite pos _ _) = pos
     getPosition (CAny pos _) = pos
@@ -1048,8 +1057,8 @@ instance PPrint CExpr where
     pPrint d p (Ccase pos e arms) = pparen (p > 0) $ ppCase d e arms
     pPrint d p (CAny {}) = text "_"
     pPrint d p (CVar i) = ppVarId d i
-    pPrint d p (CStruct tyc []) | tyc == idPrimUnit = text "()"
-    pPrint d p (CStruct tyc ies) = pparen (p > 0) $ pPrint d (maxPrec+1) tyc <+> t "{" <+> sepList (map f ies ++ [t"}"]) (t";")
+    pPrint d p (CStruct _ tyc []) | tyc == idPrimUnit = text "()"
+    pPrint d p (CStruct _ tyc ies) = pparen (p > 0) $ pPrint d (maxPrec+1) tyc <+> t "{" <+> sepList (map f ies ++ [t"}"]) (t";")
         where f (i, e) = ppVarId d i <+> t "=" <+> pp d e
     pPrint d p (CStructUpd e ies) = pparen (p > 0) $ pPrint d (maxPrec+1) e <+> t "{" <+> sepList (map f ies ++ [t"}"]) (t";")
         where f (i, e) = ppVarId d i <+> t "=" <+> pp d e
@@ -1117,7 +1126,7 @@ instance PPrint CExpr where
     pPrint d p (CCon0 _ i) = ppConId d i
     ----
     pPrint d p (CConT _ i es) = pPrint d p (CCon i es)
-    pPrint d p (CStructT ty ies) = pPrint d p (CStruct tyc ies)
+    pPrint d p (CStructT ty ies) = pPrint d p (CStruct (Just True) tyc ies)
         where (Just tyc) = leftCon ty
     pPrint d p (CSelectT _ i) = text "." <> ppVarId d i
     pPrint d p (CLitT _ l) = pPrint d p l
@@ -1267,10 +1276,10 @@ instance PPrint CQual where
 instance PPrint CPat where
     pPrint d p (CPVar a) = pPrint d p a
     pPrint d p (CPCon i as) = pparen (p>(maxPrec-1)) $ sep (ppConId d i : map (pPrint d maxPrec) as)
-    pPrint d p (CPstruct tyc []) | tyc == idPrimUnit = text "()"
-    pPrint d p (CPstruct tyc [(_, fst), (_, snd)]) | tyc == idPrimPair =
+    pPrint d p (CPstruct _ tyc []) | tyc == idPrimUnit = text "()"
+    pPrint d p (CPstruct _ tyc [(_, fst), (_, snd)]) | tyc == idPrimPair =
         pparen True (pPrint d 0 fst <> t"," <+> pPrint d 0 snd)
-    pPrint d p (CPstruct i fs) = pparen (p>(maxPrec-1)) $ ppConId d i <+> t "{" <+> sep (map ppField fs ++ [t"}"])
+    pPrint d p (CPstruct _ i fs) = pparen (p>(maxPrec-1)) $ ppConId d i <+> t "{" <+> sep (map ppField fs ++ [t"}"])
         where ppField (i, CPVar i') | i == i' = ppVarId d i <> t";"
               ppField (i, p) = ppVarId d i <+> t "=" <+> pp d p <> t";"
     pPrint d p (CPAs a pp) = pPrint d maxPrec a <> t"@" <> pPrint d maxPrec pp

@@ -104,7 +104,7 @@ expX =      blockKwOf L_let pDeflM +.+ l L_in ..+ exp0                >>> Cletre
         ||! l L_if +.+ exp0 +.+ osm ..+
             l L_then ..+ exp0 +.+ osm ..+
             l L_else ..+ exp0                                         >>>>> Cif
-        ||! pTyConId +.+ pFieldBlock                                  >>> CStruct
+        ||! pTyConId +.+ pFieldBlock                                  >>> CStruct Nothing
         ||! l L_valueOf +.+ atyp                                      >>- ( \ (p, t) -> cVApply (setIdPosition p idValueOf) [CHasType (anyExprAt p) (CQType [] (TAp (cTCon idBit) t))])
         ||! l L_stringOf +.+ atyp                                     >>- ( \ (p, t) -> cVApply (setIdPosition p idStringOf) [CHasType (anyExprAt p) (CQType [] (TAp (cTCon idStringProxy) t))])
         ||! aexp `into` (\ e ->
@@ -343,14 +343,16 @@ pIfcPrags  = l L_lpragma ..+  pIfcPragmas `sepBy` cm +.. l L_rpragma `into`
                   (\a -> succeed $  (concat a))
                   ||! succeed []
 
+prefix :: CParser ()
+prefix = literal (mkFString "prefixs") ||| literal (mkFString "prefix")
 
 pIfcPragmas :: CParser [IfcPragma]
 pIfcPragmas =
     -- arg_name = [id,id]
     literal (mkFString "arg_names") ..+ eq ..+ lb ..+  pFieldId `sepBy` cm +.. rb `into`
                 (\a -> succeed $  [(PIArgNames a)])
-    -- prefixes = [ (id,"str"), ...]
-    ||!  literal (mkFString "prefixs") ..+ eq ..+ varString
+    -- prefix = "str"
+    ||!  prefix ..+ eq ..+ varString
              `into` (\x  -> succeed $  [(PIPrefixStr x)])
     -- readys = = [ (id,"str"), ...]
     ||!  literal (mkFString "ready" )  ..+ eq ..+ varString
@@ -482,11 +484,13 @@ pDataB b = l L_data ..+ pTyConIdK +.+ many pTyVarId +.+ eql b +.+ sepBy1 pSumman
                 getTs (constr_names, Left ts) =
                     COriginalSummand { cos_names = constr_names,
                                        cos_tag_encoding = Nothing,
-                                       cos_arg_types = ts }
+                                       cos_arg_types = ts,
+                                       cos_field_names = Nothing }
                 getTs (constr_names, Right its) =
                     COriginalSummand { cos_names = constr_names,
                                        cos_tag_encoding = Nothing,
-                                       cos_arg_types = map snd its }
+                                       cos_arg_types = map snd its,
+                                       cos_field_names = Just $ map fst its }
                 isLeft (Left _) = True
                 isLeft (Right _) = False
 
@@ -570,7 +574,7 @@ pPat :: CParser CPat
 pPat = pPatApply ||! pPatOp ||! pAPat
 
 pPatApply :: CParser CPat
-pPatApply = pConId `into` (\ c -> blockBrOf pPField                        >>- CPstruct c
+pPatApply = pConId `into` (\ c -> blockBrOf pPField                        >>- CPstruct Nothing c
                               ||! many1 pAPat                                >>- CPCon c)
 
 pPatOp :: CParser CPat

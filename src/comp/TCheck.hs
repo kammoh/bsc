@@ -206,9 +206,11 @@ tiExpr as td exp@(CCon c es) = do
               let res =
                     case es ++ map CVar extraArgs of
                       []  -> let unit = setIdPosition (getPosition c) idPrimUnit
-                             in CApply (CCon0 Nothing c) [CStruct unit []]
+                             in CApply (CCon0 Nothing c) [CStruct (Just True) unit []]
                       [e] -> CApply (CCon0 Nothing c) [e]
-                      es  -> CStruct c (zipWith (\ i e -> (setIdPosition (getPosition e) i, e)) tupleIds es)
+                      es  ->
+                        let ies = zipWith (\ i e -> (setIdPosition (getPosition e) i, e)) tupleIds es
+                        in  CApply (CCon0 Nothing c) [CStruct (Just True) (mkTCId ti c) ies]
               tiExpr as td $ foldr CLam res $ map Right extraArgs
 
 tiExpr as td (CCon1 ti c e) = tiExpr as td (CApply (CCon0 (Just ti) c) [e])
@@ -228,18 +230,15 @@ tiExpr as td exp@(CCon0 mti c) = do
     ps'            <- concatMapM (mkVPred (getPosition exp)) ps
     return (eq_ps ++ ps', iAPs (CConT ti c' []) ts ps')
 
-tiExpr as td exp@(CStruct c ies) = do
+tiExpr as td exp@(CStruct mb c ies) = do
     --trace ("CStruct " ++ ppReadable exp) $ return ()
-    mti <- (findCons td c >>= \ (_, ti) -> return (Just ti)) `handle` \ _ -> return Nothing
-    case mti of
-     Just ti -> tiExpr as td (CApply (CCon0 Nothing c) [CStruct (mkTCId ti c) ies])
-     Nothing -> do
-      find_res <- findTyCon c
-      case find_res of
-       --- XXX: assuming kind will be there because this is a struct
-       tyc@(TyCon c' (Just k) ti) ->
-        case ti of
-         TIstruct ss qfs -> do
+    disamb <- disambiguateStruct mb td c (map fst ies)
+    case disamb of
+      Left tc -> handleStruct tc
+      Right ti  -> handleCons ti
+ where
+   handleCons ti = tiExpr as td (CApply (CCon0 Nothing c) [CStruct (Just True) ti ies])
+   handleStruct tyc@(TyCon c' (Just k) (TIstruct ss qfs)) = do
             -- find any defaults
             defaults <- concatMapM (findFieldDefault td c c') qfs
             let mkTS t KStar = return t
@@ -300,8 +299,7 @@ tiExpr as td exp@(CStruct c ies) = do
                     let (pss, ies') = unzip psies
                     --trace (show (fs, map fst ies)) $ return ()
                     return (concat (eq_ps:pss), CStructT st ies')
-         _ -> err (getPosition c, ENotStructId (pfpString c))
-       _ -> internalError ("tiExpr: unexpected findTyCon result")
+   handleStruct _ = internalError ("tiExpr: struct disambig didn't return expected TyCon")
 
 tiExpr as td exp@(CStructUpd e []) = tiExpr as td e
 tiExpr as td exp@(CStructUpd e ies@((i,_):_)) = do
@@ -315,7 +313,7 @@ tiExpr as td exp@(CStructUpd e ies@((i,_):_)) = do
         x <- newVar (getPosition e) "tiExprCStructUpd"
         let v = CVar x
             fs = map unQualId qfs
-            new = CStruct ti (map mk fs)
+            new = CStruct (Just True) ti (map mk fs)
             mk i = case lookup i ies of
                    Just e -> (i, e)
                    Nothing -> (i, CSelectTT ti v i)
@@ -476,7 +474,7 @@ tiExpr as td e@(CAnyT _ _ t) = do
 
 tiExpr as td (CBinOp e1 comma e2) | comma == idComma =
     let pos = getIdPosition comma
-    in  tiExpr as td (CStruct (setIdPosition pos idPrimPair)
+    in  tiExpr as td (CStruct (Just True) (setIdPosition pos idPrimPair)
                 [(setIdPosition pos (unQualId idPrimFst), e1), (setIdPosition pos (unQualId idPrimSnd), e2)])
 
 tiExpr as td (CBinOp e1 op e2) = tiExpr as td (cVApply op [e1, e2])
@@ -562,7 +560,7 @@ tiExpr as td exp@(Cinterface pos (Just ti) ds) = do
     let
         mkFieldPair d = let i = getLName d
                         in  (i, Cletseq [d] (CVar i))
-        ifc = CStruct ti (map mkFieldPair ds)
+        ifc = CStruct (Just True) ti (map mkFieldPair ds)
     -- check that the user's argument names match those in the type
     -- declaration, and warn if not (if the warning is turned on)
     checkMethodArgNames ti ds
@@ -1088,7 +1086,9 @@ tiAction :: [Assump] -> Type -> Position -> CStmts -> TI ([VPred], CExpr)
 tiAction as td pos ss = do
     let ss' = case reverse ss of
                 CSExpr _ _ : _ -> ss
-                _ -> ss ++ [CSExpr Nothing $ cVApply (idReturn pos) [CStruct (setIdPosition pos idPrimUnit) []]]
+                _ -> ss ++ [CSExpr Nothing $
+                              cVApply (idReturn pos)
+                                [CStruct (Just True) (setIdPosition pos idPrimUnit) []]]
     --trace (ppReadable (td, ss')) $ return ()
     unifyNoEq "tiAction" (Caction pos ss) tAction td
     ss'' <- recStmts ss'
@@ -3197,12 +3197,13 @@ expCLMatch (CLMatch p e) =
         v <- newVar (getPosition p) "expCLMatch"
         expand [bind v e] (CVar v) p'
   where bind i e = CLValue i [CClause [] [] e] []
-        expand ds v (CPstruct ti fs) = do
+        expand ds v (CPstruct mb ti fs)
+          | mb /= (Just False) = do
                 dss <- mapM (\ (f, p) -> expCLMatch (CLMatch p (CSelectTT ti v f))) fs
                 return (concat (ds:dss))
         expand _ _ p = err (getPosition p, EBadMatch (pfpString p))
         expComma (CPCon comma [p1, p2]) | comma == idComma =
-                CPstruct (setIdPosition (getIdPosition comma) idPrimPair)
+                CPstruct (Just True) (setIdPosition (getIdPosition comma) idPrimPair)
                     [(setIdPosition (getPosition p1) idPrimFst, p1),
                      (setIdPosition (getPosition p2) idPrimSnd, p2)]
         expComma p = p

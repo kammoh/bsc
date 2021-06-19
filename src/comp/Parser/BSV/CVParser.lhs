@@ -748,6 +748,7 @@ XXX allow constants other than decimal
 >                    summands =
 >                        (COriginalSummand { cos_names = [tag_name],
 >                                            cos_arg_types = [],
+>                                            cos_field_names = Nothing,
 >                                            cos_tag_encoding = orig_enc },
 >                         CInternalSummand { cis_names = [tag_name],
 >                                            cis_arg_type =
@@ -947,7 +948,7 @@ if prefix is provided, sub-union and sub-struct constructors start with it
 >                       (Maybe Id {- constructor ID prefix -}
 >                        -> [(Id, PartialKind)] {- type parameters collected thus far -}
 >                        -> [CTypeclass] {- derivations collected thus far -}
->                        -> ((Id, CType, [CQType]), [CDefn]))
+>                        -> ((Id, CType, [Id], [CQType]), [CDefn]))
 > pTypedefStructType isTopLevel =
 >     do pKeyword SV_KW_struct
 >        mkFields <- pInBraces pTypedefStructFields
@@ -963,13 +964,14 @@ if prefix is provided, sub-union and sub-struct constructors start with it
 >                    idk = mkIdK fullName kinds
 >                    (fields, defns) =
 >                        unzip (mkFields (Just fullName) allParams derivs)
+>                    fieldNames = map cf_name fields
 >                    fieldTypes = map cf_type fields
 >                    structType = case prefix of
 >                                 Nothing -> SStruct   -- standalone struct
 >                                 Just i -> SDataCon i True -- sub-struct
 >                    constr = cTApplys (cTCon fullName) (map cTVar params)
 >                    defn = Cstruct True structType idk params fields derivs
->                in  ((name, constr, fieldTypes), defn : concat defns)
+>                in  ((name, constr, fieldNames, fieldTypes), defn : concat defns)
 >        return mkStruct
 
 struct field: sub-struct, tagged union, void, or regular type
@@ -985,11 +987,12 @@ if prefix is provided, sub-union and sub-struct constructors start with it
 > pTypedefTaggedUnionField =
 >         do mkSubStruct <- pTypedefStructType False
 >            let mkField prefix enc params derivs =
->                    let ((name, typeConstr, fieldTypes), defns) =
+>                    let ((name, typeConstr, fieldNames, fieldTypes), defns) =
 >                            mkSubStruct prefix params derivs
 >                        original_summands =
 >                            COriginalSummand { cos_names = [name],
 >                                               cos_arg_types = fieldTypes,
+>                                               cos_field_names = Just fieldNames,
 >                                               cos_tag_encoding = Nothing }
 >                        internal_summands =
 >                            CInternalSummand { cis_names = [name],
@@ -1004,6 +1007,7 @@ if prefix is provided, sub-union and sub-struct constructors start with it
 >                        original_summands =
 >                            COriginalSummand { cos_names = [name],
 >                                               cos_arg_types = fieldTypes,
+>                                               cos_field_names = Nothing,
 >                                               cos_tag_encoding = Nothing }
 >                        internal_summands =
 >                            CInternalSummand { cis_names = [name],
@@ -1018,6 +1022,7 @@ if prefix is provided, sub-union and sub-struct constructors start with it
 >                    let original_summands =
 >                            COriginalSummand { cos_names = [name],
 >                                               cos_arg_types = [],
+>                                               cos_field_names = Nothing,
 >                                               cos_tag_encoding = Nothing }
 >                        internal_summands =
 >                            CInternalSummand { cis_names = [name],
@@ -1032,6 +1037,7 @@ if prefix is provided, sub-union and sub-struct constructors start with it
 >                    let original_summands =
 >                            COriginalSummand { cos_names = [name],
 >                                               cos_arg_types = [CQType [] typ],
+>                                               cos_field_names = Nothing,
 >                                               cos_tag_encoding = Nothing }
 >                        internal_summands =
 >                            CInternalSummand { cis_names = [name],
@@ -1721,7 +1727,7 @@ EXPRESSIONS
 > pConstructorPrimaryWith :: Id -> Bool -> SV_Parser CExpr
 > pConstructorPrimaryWith name tagged =
 >         do namedArgs <- pInBraces (pCommaSep pFieldInit)
->            return $ CStruct name namedArgs
+>            return $ CStruct (Just (not tagged)) name namedArgs
 >     <|> do positionalArgs <- option [] (pConstructorPrimaryPositionalArgs tagged)
 >            return $ CCon name positionalArgs
 
@@ -2655,19 +2661,20 @@ Parse a pattern and return it
 > pPattern :: SV_Parser CPat
 > pPattern =
 >     (pPatternVariable
->      <|> (pKeyword SV_KW_tagged >> pQualConstructor >>= pPatternWith)
+>      <|> (pKeyword SV_KW_tagged >> pQualConstructor >>= pConstrPatternWith)
+>      <|> (pQualConstructor >>= pStructOrEnumPatternWith)
 >      <|> pInParens pPattern
 >      <|> pTuplePattern
 >      <|> pWildcardPattern
 >      <|> pConstPattern) <?> "pattern"
 
-> pPatternWith :: Id -> SV_Parser CPat
-> pPatternWith constr =
->         (try (do fields <- pInBraces (pCommaSep pFieldPattern)
->                  return (CPstruct constr fields)))
->     <|> do pat <- (    pTuplePattern
->                    <|> pWildcardPattern
+> pConstrPatternWith :: Id -> SV_Parser CPat
+> pConstrPatternWith constr =
+>         do pos <- getPos
+>            pInBraces (pConstrFieldsOrTuplePatternWith pos constr)
+>     <|> do pat <- (    pWildcardPattern
 >                    <|> pConstPattern
+>                    <|> pEnumPattern
 >                    <|> pInParens pPattern
 >                   )
 >            return (CPCon constr [pat])
@@ -2675,6 +2682,24 @@ Parse a pattern and return it
 >            var <- pIdentifier
 >            return (CPCon constr [CPVar var])
 >     <|> return (CPCon constr [])
+
+> pStructOrEnumPatternWith :: Id -> SV_Parser CPat
+> pStructOrEnumPatternWith constr =
+>         -- XXX require at least one field?
+>         (do fields <- pInBraces (pCommaSep pFieldPattern)
+>             return (CPstruct (Just True) constr fields))
+>     <|> return (CPCon constr [])
+
+> pConstrFieldsOrTuplePatternWith :: Position -> Id -> SV_Parser CPat
+> pConstrFieldsOrTuplePatternWith pos constr =
+>     -- patterns in tuples can't start with identifiers,
+>     -- so these two are ok to combine without 'try'
+>         (do pat <- pTuplePatternWith pos
+>             return (CPCon constr [pat]))
+>     <|> -- use 'pCommaSep' (not 'pCommaSep1'),
+>         -- to allow all fields to be omitted
+>         (do fields <- pCommaSep pFieldPattern
+>             return (CPstruct (Just False) constr fields))
 
 > pPatternVariable :: SV_Parser CPat
 > pPatternVariable =
@@ -2747,7 +2772,10 @@ Parse a pattern and return it
 > pConstPattern =
 >         pNumericLiteralPattern                  -- numbers
 >     <|> pStringLiteralPattern                   -- strings
->     <|> fmap ((flip CPCon) []) pQualConstructor -- enum-like/void patterns
+
+> pEnumPattern :: SV_Parser CPat
+> pEnumPattern =
+>     fmap ((flip CPCon) []) pQualConstructor -- enum-like/void patterns
 
 > pWildcardPattern :: SV_Parser CPat
 > pWildcardPattern =
@@ -2758,7 +2786,12 @@ Parse a pattern and return it
 > pTuplePattern :: SV_Parser CPat
 > pTuplePattern =
 >     do pos <- getPos
->        fmap (pMkTuple pos) (pInBraces (pCommaSep pPattern))
+>        pInBraces (pTuplePatternWith pos)
+
+> pTuplePatternWith :: Position -> SV_Parser CPat
+> pTuplePatternWith pos =
+>     -- XXX should we require at least two patterns?
+>     fmap (pMkTuple pos) (pCommaSep1 pPattern)
 
 > pImperativeCaseMatchesArm :: ImperativeFlags
 >                           -> SV_Parser ISCaseTaggedArm

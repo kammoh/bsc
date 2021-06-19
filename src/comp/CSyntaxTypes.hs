@@ -82,7 +82,7 @@ instance Types CExpr where
     apSub s (CSelectTT ti e i) = CSelectTT ti (apSub s e) i
     apSub s (CCon i es) = CCon i (apSub s es)
     apSub s (Ccase pos e as) = Ccase pos (apSub s e) (apSub s as)
-    apSub s (CStruct ti fs) = CStruct ti (mapSnd (apSub s) fs)
+    apSub s (CStruct mb ti fs) = CStruct mb ti (mapSnd (apSub s) fs)
     apSub s (CStructUpd e fs) = CStructUpd (apSub s e) (mapSnd (apSub s) fs)
     apSub s (Cwrite pos e v) = Cwrite pos (apSub s e) (apSub s v)
     apSub s e@(CAny {}) = e
@@ -127,7 +127,7 @@ instance Types CExpr where
     tv (CSelectTT ti e i) = tv e
     tv (CCon i es) = tv es
     tv (Ccase pos e as) = tv (e, as)
-    tv (CStruct ti fs) = tv (map snd fs)
+    tv (CStruct _ _ fs) = tv (map snd fs)
     tv (CStructUpd e fs) = tv (e, map snd fs)
     tv (Cwrite pos e v) = tv (e,v)
     tv e@(CAny {}) = []
@@ -187,7 +187,7 @@ instance Types CMStmt where
 
 instance Types CPat where
     apSub s (CPCon c ps) = CPCon c (apSub s ps)
-    apSub s (CPstruct c fs) = CPstruct c (mapSnd (apSub s) fs)
+    apSub s (CPstruct mb c fs) = CPstruct mb c (mapSnd (apSub s) fs)
     apSub s p@(CPVar i) = p
     apSub s (CPAs i p) = CPAs i (apSub s p)
     apSub s p@(CPAny {}) = p
@@ -197,7 +197,7 @@ instance Types CPat where
     apSub s (CPConTs ti c ts ps) = CPConTs ti c (apSub s ts) (apSub s ps)
     apSub s (CPOper os) = internalError ("CSyntaxTypes.Types(CPat).apSub: CPOper " ++ ppReadable os)
     tv (CPCon c ps) = tv ps
-    tv (CPstruct c fs) = tv (map snd fs)
+    tv (CPstruct _ _ fs) = tv (map snd fs)
     tv (CPVar p) = []
     tv (CPAs i p) = tv p
     tv (CPAny {}) = []

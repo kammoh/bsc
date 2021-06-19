@@ -23,7 +23,7 @@ doTrace = elem "-trace-genbin" progArgs
 -- .bo file tag -- change this whenever the .bo format changes
 -- See also GenABin.header
 header :: [Byte]
-header = "bsc-20180813-1"
+header = "bsc-20210430-1"
 
 genBinFile :: ErrorHandle ->
               String -> CSignature -> CSignature -> IPackage a -> IO ()
@@ -181,12 +181,12 @@ instance Bin CInternalSummand where
 -- Bin COriginalSummand
 
 instance Bin COriginalSummand where
-    writeBytes (COriginalSummand is ts mn) =
+    writeBytes (COriginalSummand is ts fns mn) =
         section "COriginalSummand" $
-        do toBin is; toBin ts; toBin mn
+        do toBin is; toBin ts; toBin fns; toBin mn
     readBytes = do when doTrace $ traceM("read COriginalSummand")
-                   is <- fromBin; ts <- fromBin; mn <- fromBin
-                   return (COriginalSummand is ts mn)
+                   is <- fromBin; ts <- fromBin; fns <- fromBin; mn <- fromBin
+                   return (COriginalSummand is ts fns mn)
 
 -- ----------
 -- Bin CField
@@ -211,7 +211,7 @@ instance Bin CClause where
 
 instance Bin CPat where
     writeBytes (CPCon i ps) = do putI 0; toBin i; toBin ps
-    writeBytes (CPstruct i ips) = do putI 1; toBin i; toBin ips
+    writeBytes (CPstruct mb i ips) = do putI 1; toBin mb; toBin i; toBin ips
     writeBytes (CPVar i) = do putI 2; toBin i
     writeBytes (CPAs i p) = do putI 3; toBin i; toBin p
     writeBytes (CPAny p) = do putI 4; toBin p
@@ -225,8 +225,8 @@ instance Bin CPat where
                    case tag of
                      0 -> do i <- fromBin; ps <- fromBin
                              return (CPCon i ps)
-                     1 -> do i <- fromBin; ips <- fromBin;
-                             return (CPstruct i ips)
+                     1 -> do mb <- fromBin; i <- fromBin; ips <- fromBin;
+                             return (CPstruct mb i ips)
                      2 -> do i <- fromBin; return (CPVar i)
                      3 -> do i <- fromBin; p <- fromBin; return (CPAs i p)
                      4 -> do p <- fromBin; return (CPAny p)
@@ -298,7 +298,7 @@ instance Bin CExpr where
     writeBytes (CSelect e i) = do putI 4; toBin e; toBin i
     writeBytes (CCon i es) = do putI 5; toBin i; toBin es
     writeBytes (Ccase pos e arms) = do putI 6; toBin pos; toBin e; toBin arms
-    writeBytes (CStruct i ies) = do putI 7; toBin i; toBin ies
+    writeBytes (CStruct mb i ies) = do putI 7; toBin mb; toBin i; toBin ies
     writeBytes (CStructUpd e ies) = do putI 8; toBin e; toBin ies
     writeBytes (Cwrite pos e1 e2) = do putI 9; toBin pos; toBin e1; toBin e2
     writeBytes (CAny pos uk) = do putI 10; toBin pos; toBin uk
@@ -354,7 +354,8 @@ instance Bin CExpr where
              5 -> do i <- fromBin; es <- fromBin; return (CCon i es)
              6 -> do pos <- fromBin; e <- fromBin; arms <- fromBin;
                      return (Ccase pos e arms)
-             7 -> do i <- fromBin; ies <- fromBin; return (CStruct i ies)
+             7 -> do mb <- fromBin; i <- fromBin; ies <- fromBin;
+                     return (CStruct mb i ies)
              8 -> do i <- fromBin; ies <- fromBin; return (CStructUpd i ies)
              9 -> do pos <- fromBin; e1 <- fromBin; e2 <- fromBin;
                      return (Cwrite pos e1 e2)
@@ -569,6 +570,16 @@ instance Bin (IExpr a) where
                      n -> internalError $ "GenBin.Bin(IExpr).readBytes: " ++ show n
 
 -- ----------
+-- Bin ConTagInfo
+
+instance Bin ConTagInfo where
+  writeBytes (ConTagInfo conNo numCon conTag tagSize) =
+    do toBin conNo; toBin numCon; toBin conTag; toBin tagSize
+  readBytes = do
+    conNo <- fromBin; numCon <- fromBin; conTag <- fromBin; tagSize <- fromBin
+    return $ ConTagInfo conNo numCon conTag tagSize
+
+-- ----------
 -- Bin IConInfo
 
 instance Bin (IConInfo a) where
@@ -578,9 +589,9 @@ instance Bin (IConInfo a) where
         do putI 2; toBin t; toBin n; toBin isC; toBin ps
     writeBytes (ICForeign { fcallNo = (Just _) }) =
         internalError "GenBin.Bin(IConInfo).writeBytes: ICForeign with cookie"
-    writeBytes (ICCon t i j)    = do putI 3; toBin t; toBin i; toBin j
-    writeBytes (ICIs t i j)     = do putI 4; toBin t; toBin i; toBin j
-    writeBytes (ICOut t i j)    = do putI 5; toBin t; toBin i; toBin j
+    writeBytes (ICCon t cti)    = do putI 3; toBin t; toBin cti
+    writeBytes (ICIs t cti)     = do putI 4; toBin t; toBin cti
+    writeBytes (ICOut t cti)    = do putI 5; toBin t; toBin cti
     writeBytes (ICTuple t is)   = do putI 6; toBin t; toBin is
     writeBytes (ICSel t i j)    = do putI 7; toBin t; toBin i; toBin j
     writeBytes (ICVerilog t ui v tss) =
@@ -632,9 +643,9 @@ instance Bin (IConInfo a) where
                               isC <- fromBin
                               ps <- fromBin
                               return (ICForeign t n isC ps Nothing)
-                     3  -> do i <- fromBin; j <- fromBin; return (ICCon t i j)
-                     4  -> do i <- fromBin; j <- fromBin; return (ICIs t i j)
-                     5  -> do i <- fromBin; j <- fromBin; return (ICOut t i j)
+                     3  -> do cti <- fromBin; return (ICCon t cti)
+                     4  -> do cti <- fromBin; return (ICIs t cti)
+                     5  -> do cti <- fromBin; return (ICOut t cti)
                      6  -> do is <- fromBin; return (ICTuple t is)
                      7  -> do i <- fromBin; j <- fromBin; return (ICSel t i j)
                      8  -> do ui <- fromBin

@@ -172,7 +172,7 @@ instance TclObjCvt VarInfo where
         toTclObj $ TLst [TCL tk, TCL ta, TCL td]
 
 instance TclObjCvt ConInfo where
-    toTclObj (ConInfo i v a x1 x2) = do
+    toTclObj (ConInfo i v a cti) = do
                              ti <- toTclObj i
                              ta <- toTclObj a
                              toTclObj $ TLst [TCL ti, TCL ta]
@@ -210,6 +210,10 @@ instance TclObjCvt TISort where
     toTclObj (TIstruct (SInterface ps) fs) = do
                             tfs <- mapM toTclObj fs
                             toTclObj $ TLst [TStr "interface", TLst (map TCL tfs)]
+
+    toTclObj (TIstruct (SPolyWrap _ _ _) fs) = do
+                            tfs <- mapM toTclObj fs
+                            toTclObj $ TLst [TStr "PolyWrap", TLst (map TCL tfs)]
 
     toTclObj TIabstract = toTclObj "Abstract"
 

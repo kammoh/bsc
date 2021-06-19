@@ -2,7 +2,6 @@
 {-# LANGUAGE PatternGuards #-}
 module MakeSymTab(
                   mkSymTab,
-                  requiredClasses,
                   cConvInst,
                   convCQType, convCQTypeWithAssumps,
                   convCType,
@@ -376,9 +375,7 @@ chkFunDeps (cls, vs, fds) =
 
 symAddCons :: (Id -> [Id]) -> Maybe Id -> SymTab -> [CDefn] -> SymTab
 symAddCons mkQuals mi s ds =
-    addCons mkQuals s [(i, ConInfo di vis a m n)
-                        | (di, a@(i :>: _), m, n, vis)
-                        <- concatMap (getCons mi s) ds]
+    addCons mkQuals s $ concatMap (getCons mi s) ds
 
 symAddFields :: (Id -> [Id]) -> Maybe Id -> SymTab -> [CDefn] -> SymTab
 symAddFields mkQuals mi s ds =
@@ -460,7 +457,7 @@ convInst errh mi r di@(Cinstance qt@(CQType _ t) ds) =
                              -- XXX Lennart's comment: hacky encoding of dict
                              -- XXX "tiExpr" looks for this construction
                              CHasType (anyExprAt (getPosition di)) cqt)
-        body = Cletrec (map altId ds) (CStruct c (map mkf ds ++ sds))
+        body = Cletrec (map altId ds) (CStruct (Just True) c (map mkf ds ++ sds))
     in  (CValueSign (CDef (mkInstId mi t) qt [CClause [] [] body]))
 convInst _ _ _ d = d
 
@@ -475,22 +472,29 @@ mkInstId mi t =
         flat (TAp t1 t2) = flat t1 ++ flat t2
         flat _ = internalError "MakeSymTab.mkInstId flat"
 
-getCons :: Maybe Id -> SymTab -> CDefn -> [(Id, Assump, Integer, Integer, Bool)]
-getCons mi s data_decl@(Cdata {}) =
-        let rt = cTApplys (cTCon i) (map cTVar (cd_type_vars data_decl))
-            i = iKName (cd_name data_decl)
-            n = genericLength (cd_internal_summands data_decl)
-            f summand m =
-                let cns = cis_names summand
-                    -- make one for each constructor name
-                    f_aux cn =
-                        (qual mi i,
-                         qual mi cn :>:
-                           (mustConvCQType s (cd_type_vars data_decl)
-                              (CQType [] (cis_arg_type summand `fn` rt))),
-                         m, n, cd_visible data_decl)
-                in  map f_aux cns
-        in  concat (zipWith f (cd_internal_summands data_decl) [0..])
+getCons :: Maybe Id -> SymTab -> CDefn -> [(Id, ConInfo)]
+getCons mi s data_decl@(Cdata { cd_internal_summands = summands }) = concat (zipWith getInfos summands [0..])
+  where rt = cTApplys (cTCon i) (map cTVar (cd_type_vars data_decl))
+        i = iKName (cd_name data_decl)
+        n = genericLength summands
+        tagSize = log2 $ maximum (map cis_tag_encoding summands) + 1
+        getInfos summand m = map f_aux cns
+          where cns = cis_names summand
+                -- make one for each constructor name
+                cti = ConTagInfo { conNo = m,
+                                   numCon = n,
+                                   conTag = cis_tag_encoding summand,
+                                   tagSize = tagSize
+                                 }
+                f_aux cn = (assump_id, info)
+                  where assump_id = qual mi cn
+                        cqt = CQType [] (cis_arg_type summand `fn` rt)
+                        sc = mustConvCQType s (cd_type_vars data_decl) cqt
+                        info = ConInfo { ci_id = qual mi i,
+                                         ci_visible = cd_visible data_decl,
+                                         ci_assump = assump_id :>: sc,
+                                         ci_taginfo = cti
+                                       }
 getCons _ _ _ = []
 
 
@@ -715,9 +719,14 @@ getK iks ik =
         _ -> internalError ("getK " ++ ppReadable iks ++ show ik)
 
 getQInsts :: Id -> [[Bool]] -> QInsts -> (QInsts, [EMsg])
-getQInsts ci bss qts
-    | ci `elem` requiredClasses =
-        ([ qi | qi@(QInst _ ( _ :=> t)) <- qts, leftCon t == Just ci ], [])
+-- Exempt classes that are auto-derived for every type from overlap-checking.
+-- This limits the impact of the O(n^2) scaling issues because of
+-- the O(n^2) instance sort / overlap check. Unfortunately, it
+-- isn't an asymptotic fix.
+getQInsts ci _ qts
+  | ci `elem` autoderivedClasses =
+    ([ qi | qi@(QInst _ ( _ :=> t)) <- qts, leftCon t == Just ci ], [])
+
 getQInsts ci bss qts = (cls_qts', errs)
   where cls_qts  = [ qi | qi@(QInst _ ( _ :=> t)) <- qts, leftCon t == Just ci ]
         cls_qt_g = [ (qi, lt_qis) | qi <- cls_qts,

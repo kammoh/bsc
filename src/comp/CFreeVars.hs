@@ -132,7 +132,7 @@ getFVE (Ccase pos e as) = unionFVS (getFVE e) (unionManyFVS (map getFVArm as))
             in (((getFVQuals (cca_filters arm)) `unionFVS`
                  (getFVE (cca_consequent arm) `minusVS` qual_bound)) `minusVS`
                  pat_bound) `plusCS` (getPC (cca_pattern arm))
-getFVE (CStruct i ies) =
+getFVE (CStruct _ i ies) =
     -- XXX doesn't return the fields
     addC i $ unionManyFVS [getFVE e | (i, e) <- ies]
 getFVE (CStructUpd e ies) =
@@ -259,7 +259,7 @@ getFTCE (Ccase pos e as) = S.union (getFTCE e) (S.unions (map getFTCArm as))
   where getFTCArm arm = getPT (cca_pattern arm) `S.union`
                         getFTCQuals (cca_filters arm) `S.union`
                         getFTCE (cca_consequent arm)
-getFTCE (CStruct i ies) = S.unions [getFTCE e | (_, e) <- ies]
+getFTCE (CStruct _ i ies) = S.unions [getFTCE e | (_, e) <- ies]
 getFTCE (CStructUpd e ies) = S.unions (getFTCE e : [getFTCE e | (_, e) <- ies])
 getFTCE (Cwrite pos e v) = S.union (getFTCE e) (getFTCE v)
 getFTCE (CAny {}) = S.empty
@@ -355,7 +355,7 @@ getVQuals (CQFilter e:qs) = getVQuals qs
 -- Get variables bound in a pattern
 getPV :: CPat -> S.Set Id
 getPV (CPCon _ ps) = S.unions (map getPV ps)
-getPV (CPstruct _ ips) = S.unions (map (getPV . snd) ips)
+getPV (CPstruct _ _ ips) = S.unions (map (getPV . snd) ips)
 getPV (CPVar i) = S.singleton i
 getPV (CPAs i p) = S.insert i (getPV p)
 getPV (CPAny {}) = S.empty
@@ -368,7 +368,7 @@ getPV (CPOper _) = internalError "CFreeVars.getPV: CPOper"
 -- Get (constructor and field) identifiers used in a pattern
 getPC :: CPat -> S.Set Id
 getPC (CPCon i ps) = S.insert i (S.unions (map getPC ps))
-getPC (CPstruct i ips) =
+getPC (CPstruct _ i ips) =
     -- XXX we don't return fields
     S.insert i (S.unions [getPC p | (i, p) <- ips])
 getPC (CPVar i) = S.empty

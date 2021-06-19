@@ -2709,9 +2709,9 @@ getStateInfo ss = (NoConflictSet $ S.unions cfss,
                    NoConflictSet $ S.unions pcss,
                    NoConflictSet $ S.unions scss,
                    rss)
-    where cfss = [cfs | (cfs, _, _, _) <- sinfos]
-          pcss = [sbs | (_, sbs, _, _) <- sinfos]
-          scss = [sbrs| (_, _,sbrs, _) <- sinfos]
+    where cfss = [cfs  | (cfs, _, _, _) <- sinfos]
+          pcss = [sbs  | (_, sbs, _, _) <- sinfos]
+          scss = [sbrs | (_, _,sbrs, _) <- sinfos]
           rss  = sort $ concat [r  | (_, _, _, r)  <- sinfos]
           sinfos = map getSI ss
           getSI (AVInst { avi_vname = id, avi_vmi = modInfo }) =
@@ -3181,15 +3181,9 @@ makeRuleBetweenEdges ruleBetweenMap ruleMethodUseMap ruleNames sched_id_order =
                             in  Just (node, edges)
                         [] -> Nothing
 
-              rules_between = mapMaybe checkSecondRule r2s
-
-              -- for a pair of rules, we only need one node
-              current_result =
-                  case rules_between of
-                    (res:_) -> [res]
-                    [] -> []
+              r1_result = mapMaybe checkSecondRule r2s
           in
-              current_result ++ checkOneRule rest
+              r1_result ++ checkOneRule rest
         checkOneRule [] = []
 
         (new_nodes_dups, new_edgess) =

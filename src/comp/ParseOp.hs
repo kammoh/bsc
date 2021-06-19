@@ -44,7 +44,11 @@ pDefn ft def@(Cstruct _ sst idk _ fs _) =
        SStruct -> checkDupls def "member" "structure" (iKName idk) (map cf_name fs)
        SInterface{} -> checkDupls def "method" "interface" (iKName idk) (map cf_name fs)
        SDataCon i _ -> checkDupls def "member" "substructure of union" i (map cf_name fs)
-       SClass -> internalError("ParseOp.pDefn: unexpected structure type: SClass\n" ++ ppReadable def) -- do not think SClass exists before the symbol table
+       -- These don't exist until later:
+       -- Created by MakeSymTab
+       SClass -> internalError("ParseOp.pDefn: unexpected structure type: SClass\n" ++ ppReadable def)
+       -- Created by Deriving
+       SPolyWrap _ _ _ -> internalError("ParseOp.pDefn: unexpected structure type: SPolyWrap\n" ++ ppReadable def)
 
 pDefn ft def@(Cclass incoh cps idk is fdps fs) = do
   let pField f@(CField { cf_default = fcs }) = do
@@ -115,9 +119,9 @@ pPat :: FixTable -> CPat -> ErrorMonad CPat
 pPat ft (CPCon i ps) = do
     ps' <- mapM (pPat ft) ps
     return (CPCon i ps')
-pPat ft (CPstruct i ips) = do
+pPat ft (CPstruct mb i ips) = do
     ips' <- mapSndM (pPat ft) ips
-    return (CPstruct i ips')
+    return (CPstruct mb i ips')
 pPat ft p@(CPVar _) = return p
 pPat ft (CPAs i p) = do
     p' <- pPat ft p
@@ -158,9 +162,9 @@ pExpr ft (Ccase pos e as) = do
                                cca_consequent = new_consequent })
     as' <- mapM pCaseArm as
     return (Ccase pos e' as')
-pExpr ft (CStruct i ies) = do
+pExpr ft (CStruct mb i ies) = do
     ies' <- mapSndM (pExpr ft) ies
-    return (CStruct i ies')
+    return (CStruct mb i ies')
 pExpr ft (CStructUpd e ies) = do
     e' <- pExpr ft e
     ies' <- mapSndM (pExpr ft) ies
