@@ -17,6 +17,9 @@
 ## Setup MACHTYPE
 
 MACHTYPE = $(shell $(TOP)/platform.sh machtype)
+ifeq ($(MACHTYPE), arm64)
+MACHTYPE = aarch64
+endif
 export MACHTYPE
 
 ifneq ($(MACHTYPE), $(findstring $(MACHTYPE), x86_64 i386 i486 i586 i686 ppc64le aarch64 armv7l))
