@@ -54,6 +54,9 @@ endif # NO_DEPS_CHECKS
 .PHONY: all
 all: install
 
+njobs=$(shell nproc)
+MAKE := $(MAKE) -j$(njobs) GHCJOBS=$(njobs)
+
 .PHONY: install clean full_clean
 install clean full_clean:
 	$(MAKE)  -C vendor/stp   PREFIX=$(PREFIX)  $@
