@@ -20,8 +20,11 @@ ifeq ($(OSTYPE), Darwin)
 #    depend on Homebrew. Instead, statically link libgmp into libyices.
 #    Note that we must statically link by using the archive file as Apple's ld
 #    doesn't understand -Bstatic.
+GMP_CFLAGS=$(shell pkg-config --cflags gmp)
+GMP_LDFLAGS=$(shell pkg-config --libs gmp)
 LIBGMPA=$(shell pkg-config --variable=libdir gmp)/libgmp.a
-BUILD_ARGS=libyices_install_name=libyices.2.dylib LIBS=$(LIBGMPA)
+BUILD_ARGS=libyices_install_name=libyices.2.dylib 
+#LIBS=$(LIBGMPA)
 endif
 
 .PHONY: all
@@ -32,7 +35,7 @@ install:
 ifeq ($(YICES_STUB),)
 	(cd $(YICES_SRC) ; \
 		autoconf ; \
-		./configure --prefix=$(YICES_INST) ; \
+		./configure --prefix=$(YICES_INST) CFLAGS="$(GMP_CFLAGS)" LDFLAGS="$(GMP_LDFLAGS)" ; \
 		$(MAKE) $(BUILD_ARGS); \
 		$(MAKE) install \
 		)
