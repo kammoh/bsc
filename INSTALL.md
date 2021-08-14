@@ -93,6 +93,10 @@ For cabal v3.x:
     $ cabal update
     $ cabal v1-install regex-compat syb old-time split
 
+In order to build with profiling (BSC_BUILD=PROF):
+
+    $ cabal v1-install regex-compat syb old-time split ghc-prof regex regex-base regex-posix old-locale --enable-library-profiling --enable-executable-profiling --reinstall --force-reinstalls
+
 Bluespec compiler builds are tested with GHC 8.0.2 and greater.
 GHC releases older than 7.10.1 are not supported.
 

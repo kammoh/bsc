@@ -55,18 +55,18 @@ endif # NO_DEPS_CHECKS
 all: install
 
 njobs=$(shell nproc)
-MAKE := $(MAKE) -j$(njobs) GHCJOBS=$(njobs)
+# MAKE := $(MAKE) GHCJOBS=$(njobs)
 
 .PHONY: install clean full_clean
 install clean full_clean:
-	$(MAKE)  -C vendor/stp   PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C vendor/yices PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C vendor/htcl  PREFIX=$(PREFIX)  $@
+	$(MAKE)  -C vendor/stp   -j$(njobs) PREFIX=$(PREFIX)  $@
+	$(MAKE)  -C vendor/yices -j$(njobs) PREFIX=$(PREFIX)  $@
+	$(MAKE)  -C vendor/htcl  -j$(njobs) PREFIX=$(PREFIX)  $@
 	# we need to build targets from here sequentially, as they operate in the same workspace
 	$(MAKE)  -C comp -j1   PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C Libraries  PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C exec       PREFIX=$(PREFIX)  $@
-	$(MAKE)  -C VPI        PREFIX=$(PREFIX)  $@
+	$(MAKE)  -C Libraries  -j$(njobs) PREFIX=$(PREFIX)  $@
+	$(MAKE)  -C exec       -j$(njobs) PREFIX=$(PREFIX)  $@
+	$(MAKE)  -C VPI        -j$(njobs) PREFIX=$(PREFIX)  $@
 	$(MAKE)  -C Verilog    PREFIX=$(PREFIX)  $@
 	$(MAKE)  -C Verilog.Quartus  PREFIX=$(PREFIX)  $@
 	$(MAKE)  -C Verilog.Vivado   PREFIX=$(PREFIX)  $@
