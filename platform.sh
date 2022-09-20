@@ -70,12 +70,7 @@ fi
 ## =========================
 ## Find the TCL shell command
 
-if [ ${OSTYPE} = "Darwin" ] ; then
-    # Have Makefile avoid Homebrew's install of tcl on Mac
-    TCLSH=/usr/bin/tclsh
-else
-    TCLSH=`which tclsh`
-fi
+TCLSH=`which tclsh`
 
 if [ "$1" = "tclsh" ] ; then
     echo ${TCLSH}
@@ -91,12 +86,6 @@ TCL_SUFFIX=$(echo 'catch { puts [info tclversion]; exit 0}; exit 1' | ${TCLSH})
 TCL_ALT_SUFFIX=$(echo ${TCL_SUFFIX} | sed 's/\.//')
 
 if [ "$1" = "tclinc" ] ; then
-    # Avoid Homebrew's install of Tcl on Mac
-    if [ ${OSTYPE} = "Darwin" ] ; then
-	# no flags needed
-	exit 0
-    fi
-
     # Try pkg-config
     TCL_INC_FLAGS=$(${PKG_CONFIG} --silence-errors --cflags-only-I tcl${TCL_SUFFIX})
     # If pkg-config didn't work with the first prefix, try the alternative version.
@@ -132,13 +121,6 @@ fi
 
 if [ "$1" = "tcllibs" ] ; then
     TCL_VER=`echo 'catch { puts [info tclversion]; exit 0}; exit 1' | ${TCLSH}`
-
-    # Avoid Homebrew's install of Tcl on Mac
-    if [ ${OSTYPE} = "Darwin" ] ; then
-	echo -ltcl$(TCL_VER)
-	exit 0
-    fi
-
     # Try pkg-config
     TCL_LIB_FLAGS=`${PKG_CONFIG} --silence-errors --libs tcl${TCL_SUFFIX}`
     # If pkg-config didn't work with the first prefix, try the alternative version.
